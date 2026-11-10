@@ -743,10 +743,9 @@ td:first-child { font-weight: 680; }
       hint.textContent = "物体が焦点 f より内側にあります。レンズを通った光は広がって進み、その延長線がレンズの手前で交わるように見えます。物体より大きく、正立した虚像になり、スクリーンには映りません。";
     }
 
-    lensFormula.textContent = "1/" + F + " = 1/" + a + " + 1/" + fmt(result.b);
-    magnificationFormula.textContent = "m = −b/a = " +
-      (result.b < 0 ? "−(" + fmt(Math.abs(result.b)) + ")" : "−" + fmt(result.b)) +
-      " / " + a + " = " + fixed(result.m, 2);
+    lensFormula.textContent = "1/" + F + " = 1/" + a + " + 1/(" + fmt(result.b) + ")";
+    magnificationFormula.textContent = "m = −b/a = −(" + fmt(result.b) + ") / " +
+      a + " = " + fixed(result.m, 2);
   }
 
   function render() {
