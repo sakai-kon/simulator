@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>凸レンズの像シミュレータ</title>
+<style>
+:root{
+  --bg:#f5f5f7;
+  --card:#ffffff;
+  --field:#f5f5f7;
+  --ink:#1d1d1f;
+  --muted:#6e6e73;
+  --line:rgba(0,0,0,.08);
+  --line-soft:rgba(0,0,0,.055);
+  --track:rgba(0,0,0,.12);
+  --canvas:#ffffff;
+  --grid:rgba(20,32,48,.075);
+  --axis:rgba(0,0,0,.32);
+  --ray:#a85f00;
+  --obj:#c62f22;
+  --img:#0a63bc;
+  --virt:#6d28c9;
+  --lens:#8ea2b6;
+  --lensFill:rgba(120,160,210,.10);
+  --focus:#0a84ff;
+  --shadow:0 1px 2px rgba(0,0,0,.04), 0 14px 36px -20px rgba(15,23,42,.30);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#000000;
+    --card:#131315;
+    --field:#1c1c1f;
+    --ink:#f5f5f7;
+    --muted:#98989d;
+    --line:rgba(255,255,255,.11);
+    --line-soft:rgba(255,255,255,.065);
+    --track:rgba(255,255,255,.16);
+    --canvas:#0b0b0d;
+    --grid:rgba(255,255,255,.075);
+    --axis:rgba(255,255,255,.36);
+    --ray:#ffb340;
+    --obj:#ff6f62;
+    --img:#5aa9ff;
+    --virt:#c493fb;
+    --lens:#7e90a4;
+    --lensFill:rgba(130,170,240,.12);
+    --shadow:0 1px 1px rgba(0,0,0,.6), 0 14px 36px -20px rgba(0,0,0,.9);
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--font);font-size:15px;line-height:1.7;
+  padding:clamp(20px,4vw,48px) clamp(14px,3vw,28px) 60px;
+  -webkit-font-smoothing:antialiased;
+}
+h1,p{margin:0}
+.wrap{max-width:860px;margin:0 auto}
+header{margin-bottom:clamp(14px,2vw,20px)}
+h1{font-size:clamp(1.3rem,1.05rem+1.1vw,1.72rem);line-height:1.3;font-weight:600;letter-spacing:-.02em}
+.lede{margin-top:6px;font-size:.85rem;color:var(--muted)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px;border-radius:8px}
+
+.card{
+  background:var(--card);border:1px solid var(--line-soft);border-radius:20px;
+  box-shadow:var(--shadow);overflow:hidden;
+}
+.canvas{
+  position:relative;height:clamp(250px,40vh,390px);margin:10px;
+  background:var(--canvas);border:1px solid var(--line-soft);border-radius:13px;
+  overflow:hidden;touch-action:none;
+}
+svg#sim{display:block;width:100%;height:100%;cursor:default}
+svg#sim.grabbing{cursor:ew-resize}
+
+/* SVG */
+.gridline{stroke:var(--grid);stroke-width:1}
+.axis{stroke:var(--axis);stroke-width:1.2}
+.tick{stroke:var(--muted);stroke-width:1.2}
+.ticktext{fill:var(--muted);font-size:10px;text-anchor:middle;font-family:var(--font)}
+.cap{fill:var(--muted);font-size:10.5px;font-family:var(--font)}
+.lens{fill:var(--lensFill);stroke:var(--lens);stroke-width:1.6}
+.ray{fill:none;stroke:var(--ray);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.rayv{fill:none;stroke:var(--virt);stroke-width:1.5;stroke-dasharray:4 4;opacity:.85}
+.objstem{stroke:var(--obj);stroke-width:2.8;stroke-linecap:round}
+.objhead{fill:var(--obj)}
+.imgstem{stroke:var(--img);stroke-width:2.8;stroke-linecap:round}
+.imghead{fill:var(--img)}
+.vimgstem{stroke:var(--virt);stroke-width:2.8;stroke-linecap:round}
+.vimghead{fill:var(--virt)}
+.lbl{font-family:var(--font);font-size:11.5px;font-weight:600;text-anchor:middle}
+.lbl-obj{fill:var(--obj)}
+.lbl-img{fill:var(--img)}
+.lbl-virt{fill:var(--virt)}
+.note{fill:var(--muted);font-size:11px;font-family:var(--font)}
+.grip{fill:transparent;cursor:ew-resize}
+.handle{fill:var(--obj);opacity:.5}
+
+/* 結果 */
+.readout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line-soft)}
+.readout>div{padding:13px 18px;border-left:1px solid var(--line-soft)}
+.readout>div:first-child{border-left:0;padding-left:20px}
+.rk{font-size:.7rem;color:var(--muted)}
+.rv{margin-top:1px;font-size:.95rem;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.hint{padding:12px 20px 16px;border-top:1px solid var(--line-soft);font-size:.82rem;color:var(--muted);line-height:1.8}
+.hint b{color:var(--ink);font-weight:600}
+
+/* 操作 */
+.controls{padding:16px 20px 18px;border-top:1px solid var(--line-soft);background:var(--field)}
+.crow{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.crow label{font-size:.82rem;font-weight:600}
+.out{font-size:.95rem;font-weight:600;font-variant-numeric:tabular-nums}
+.out i{font-style:normal;font-size:.76rem;font-weight:500;color:var(--muted);margin-left:3px}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;display:block;width:100%;
+  height:26px;margin:6px 0 0;background:transparent;cursor:pointer;
+}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:99px;background:var(--track)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:22px;height:22px;margin-top:-9px;border:0;border-radius:50%;
+  background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.13),0 1px 3px rgba(0,0,0,.30);
+}
+input[type=range]::-moz-range-track{height:4px;border-radius:99px;background:var(--track)}
+input[type=range]::-moz-range-thumb{
+  width:22px;height:22px;border:0;border-radius:50%;background:#fff;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.13),0 1px 3px rgba(0,0,0,.30);
+}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.presets button{
+  font-family:inherit;font-size:.78rem;line-height:1.4;padding:6px 11px;border-radius:9px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;
+  transition:background .16s ease,color .16s ease,border-color .16s ease;
+}
+.presets button:hover{background:var(--field)}
+.presets button[aria-pressed=true]{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.note{margin-top:9px;font-size:.74rem;color:var(--muted)}
+
+@media (max-width:640px){
+  .readout{grid-template-columns:1fr}
+  .readout>div{border-left:0;border-top:1px solid var(--line-soft);padding:10px 20px}
+  .readout>div:first-child{border-top:0}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+@media print{
+  body{background:#fff;padding:0;color:#000}
+  .card{box-shadow:none;border-color:#ddd}
+  .controls{display:none}
+  .canvas{height:300px}
+}
+@page{size:A4;margin:16mm}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>凸レンズの像シミュレータ</h1>
+    <p class="lede">焦点距離 f = 60 cm の凸レンズです。物体までの距離を変えて、像の位置と大きさをたしかめましょう。</p>
+  </header>
+
+  <main class="card">
+
+    <div class="canvas">
+      <svg id="sim" role="img" aria-label="凸レンズと物体、光線、像の作図"></svg>
+    </div>
+
+    <div class="readout" role="group" aria-label="像の観測結果">
+      <div>
+        <div class="rk">像の種類</div>
+        <div class="rv" id="rType">実像（倒立）</div>
+      </div>
+      <div>
+        <div class="rk">像の位置</div>
+        <div class="rv" id="rPos">レンズの後ろ 120 cm</div>
+      </div>
+      <div>
+        <div class="rk">像の大きさ</div>
+        <div class="rv" id="rSize">物体と同じ大きさ</div>
+      </div>
+    </div>
+
+    <p class="hint" id="hint">物体が 2f の位置にあるので、像は 2f の位置に、<b>物体と同じ大きさ</b>で倒立してできます。</p>
+
+    <div class="controls">
+      <div class="crow">
+        <label for="aRange">物体までの距離</label>
+        <div class="out"><span id="aOut">120</span><i>cm</i></div>
+      </div>
+      <input type="range" id="aRange" min="30" max="300" step="1" value="120">
+      <div class="presets" id="presets">
+        <button type="button" data-a="180" aria-pressed="false">2f より外</button>
+        <button type="button" data-a="120" aria-pressed="true">2f</button>
+        <button type="button" data-a="90" aria-pressed="false">f 〜 2f</button>
+        <button type="button" data-a="60" aria-pressed="false">f</button>
+        <button type="button" data-a="40" aria-pressed="false">f より内側</button>
+      </div>
+      <p class="note">図の物体（赤い矢印）はドラッグでも動かせます。</p>
+    </div>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var F = 60;                 // 焦点距離（固定）
+  var OH = 40;                // 物体の高さ
+  var AMIN = 30, AMAX = 300;  // 物体までの距離の範囲
+  var NEED_W = 780;           // 表示したい横幅（cm）
+  var NEED_H = 330;           // 表示したい高さ（cm）
+  var CX = 40;                // 表示中心のずらし（cm）
+
+  var a = 120;
+
+  var svg = document.getElementById("sim");
+  var rType = document.getElementById("rType");
+  var rPos = document.getElementById("rPos");
+  var rSize = document.getElementById("rSize");
+  var hint = document.getElementById("hint");
+  var aRange = document.getElementById("aRange");
+  var aOut = document.getElementById("aOut");
+  var presets = document.getElementById("presets");
+
+  var NS = "http://www.w3.org/2000/svg";
+  var clamp = function (v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); };
+  var r2 = function (v) { return Math.round(v * 10) / 10; };
+  var fmt = function (v) {
+    return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  };
+
+  /* ---------- 光学計算 ---------- */
+  // レンズの公式 1/a + 1/b = 1/f から像距離 b、倍率 m = -b/a
+  function calc(dist) {
+    if (Math.abs(dist - F) < 0.5) return { kind: "none" };
+    var b = (dist * F) / (dist - F);
+    var m = -b / dist;
+    return { kind: b > 0 ? "real" : "virtual", b: b, m: m, h: OH * m };
+  }
+
+  /* ---------- 図の座標系 ---------- */
+  var view = { W: 800, H: 320, k: 1, xMin: -400, xMax: 400, yMax: 165 };
+
+  function measure() {
+    var rect = svg.getBoundingClientRect();
+    var W = Math.max(300, Math.round(rect.width || 800));
+    var H = Math.max(220, Math.round(rect.height || 320));
+    var k = Math.min(W / NEED_W, H / NEED_H);
+    view.W = W; view.H = H; view.k = k;
+    view.xMin = CX - (W / 2) / k;
+    view.xMax = CX + (W / 2) / k;
+    view.yMax = (H / 2) / k;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  }
+
+  function px(cm) { return view.W / 2 + (cm - CX) * view.k; }   // x（cm → px）
+  function py(cm) { return view.H / 2 - cm * view.k; }          // y（cm → px）
+  function cmX(clientX) {
+    var r = svg.getBoundingClientRect();
+    return CX + (clientX - r.left - view.W / 2) / view.k;
+  }
+
+  /* ---------- 要素作成 ---------- */
+  function el(tag, attrs) {
+    var e = document.createElementNS(NS, tag);
+    if (attrs) for (var key in attrs) e.setAttribute(key, attrs[key]);
+    return e;
+  }
+  function line(x1, y1, x2, y2, cls) {
+    return el("line", { x1: r2(x1), y1: r2(y1), x2: r2(x2), y2: r2(y2), "class": cls });
+  }
+  function text(x, y, str, cls) {
+    var t = el("text", { x: r2(x), y: r2(y), "class": cls });
+    t.textContent = str;
+    return t;
+  }
+  function arrowAt(x, tipY, baseY, clsStem, clsHead) {
+    var g = el("g");
+    g.appendChild(line(x, tipY, x, baseY, clsStem));
+    var dir = tipY < baseY ? 1 : -1;     // 画面座標：上向きなら +1
+    g.appendChild(el("polygon", {
+      points: r2(x) + "," + r2(tipY) + " " +
+              r2(x - 5) + "," + r2(tipY + 9 * dir) + " " +
+              r2(x + 5) + "," + r2(tipY + 9 * dir),
+      "class": clsHead
+    }));
+    return g;
+  }
+
+  /* ---------- 描画 ---------- */
+  function draw() {
+    measure();
+    var W = view.W, H = view.H, k = view.k;
+    var o = calc(a);
+
+    var root = el("g");
+    svg.replaceChildren(root);
+
+    /* 方眼 */
+    var step = 10;
+    var cand = [10, 20, 25, 50, 100, 200];
+    for (var s = 0; s < cand.length; s++) { step = cand[s]; if (cand[s] * k >= 30) break; }
+    var gGrid = el("g");
+    var v;
+    for (v = Math.ceil(view.xMin / step) * step; v <= view.xMax; v += step) {
+      gGrid.appendChild(line(px(v), 0, px(v), H, "gridline"));
+    }
+    for (v = Math.ceil(-view.yMax / step) * step; v <= view.yMax; v += step) {
+      gGrid.appendChild(line(0, py(v), W, py(v), "gridline"));
+    }
+    root.appendChild(gGrid);
+
+    /* 光軸 */
+    root.appendChild(line(0, py(0), W, py(0), "axis"));
+
+    /* 焦点の目盛り */
+    var gTick = el("g");
+    var marks = [[-2 * F, "-2F"], [-F, "-F"], [F, "F"], [2 * F, "2F"]];
+    for (var i = 0; i < marks.length; i++) {
+      var mx = marks[i][0];
+      if (mx < view.xMin + 14 || mx > view.xMax - 14) continue;
+      gTick.appendChild(line(px(mx), py(0) - 5, px(mx), py(0) + 5, "tick"));
+      gTick.appendChild(text(px(mx), py(0) + 19, marks[i][1], "ticktext"));
+    }
+    root.appendChild(gTick);
+
+    root.appendChild(text(14, 20, "焦点距離 f = 60 cm", "cap"));
+
+    /* 凸レンズ */
+    var lensHalf = 60;
+    var bulge = Math.max(6, Math.min(13, lensHalf * k * 0.17));
+    var lens = el("path", {
+      d: "M " + r2(px(0)) + " " + r2(py(lensHalf)) +
+         " Q " + r2(px(0) + bulge) + " " + r2(py(0)) + " " + r2(px(0)) + " " + r2(py(-lensHalf)) +
+         " Q " + r2(px(0) - bulge) + " " + r2(py(0)) + " " + r2(px(0)) + " " + r2(py(lensHalf)) + " Z",
+      "class": "lens"
+    });
+    root.appendChild(lens);
+
+    /* 物体 */
+    var objX = -a, objTipY = py(OH);
+    root.appendChild(arrowAt(px(objX), objTipY, py(0), "objstem", "objhead"));
+    var objLabelY = clamp(objTipY - 9, 13, H - 6);
+    root.appendChild(text(px(objX), objLabelY, "物体", "lbl lbl-obj"));
+
+    /* 光線 */
+    function edgePoint(p, d) {
+      var t = Infinity, eps = 1e-9;
+      if (d.x > eps) t = Math.min(t, (view.xMax - p.x) / d.x);
+      if (d.y > eps) t = Math.min(t, (view.yMax - p.y) / d.y);
+      if (d.y < -eps) t = Math.min(t, (-view.yMax - p.y) / d.y);
+      if (!isFinite(t) || t < 0) t = 0;
+      return { x: p.x + d.x * t, y: p.y + d.y * t };
+    }
+    function rayPath(points, cls) {
+      var d = "";
+      for (var j = 0; j < points.length; j++) {
+        d += (j ? " L " : "M ") + r2(px(points[j].x)) + " " + r2(py(points[j].y));
+      }
+      root.appendChild(el("path", { d: d, "class": cls }));
+    }
+
+    // ① 光軸に平行 → 焦点 F を通る
+    var p1 = edgePoint({ x: 0, y: OH }, { x: F, y: -OH });
+    rayPath([{ x: objX, y: OH }, { x: 0, y: OH }, p1], "ray");
+
+    // ② レンズの中心を通る（まっすぐ進む）
+    var p2 = edgePoint({ x: 0, y: 0 }, { x: a, y: -OH });
+    rayPath([{ x: objX, y: OH }, { x: 0, y: 0 }, p2], "ray");
+
+    // 虚像のときは、光を逆向きに延ばした点線を描く
+    if (o.kind === "virtual" && o.b > view.xMin) {
+      rayPath([{ x: 0, y: OH }, { x: o.b, y: o.h }], "rayv");
+      rayPath([{ x: objX, y: OH }, { x: o.b, y: o.h }], "rayv");
+    }
+
+    /* 像 */
+    if (o.kind !== "none") {
+      var imgX = px(o.b), imgTipY = py(o.h);
+      var fitsX = o.b > view.xMin + 10 && o.b < view.xMax - 10;
+      var fitsY = Math.abs(o.h) < view.yMax - 14;
+
+      if (fitsX && fitsY) {
+        var real = o.kind === "real";
+        root.appendChild(arrowAt(imgX, imgTipY, py(0),
+          real ? "imgstem" : "vimgstem", real ? "imghead" : "vimghead"));
+        var labelY = real
+          ? clamp(imgTipY + 16, 14, H - 6)
+          : clamp(imgTipY - 9, 13, H - 6);
+        root.appendChild(text(imgX, labelY, real ? "実像" : "虚像",
+          "lbl " + (real ? "lbl-img" : "lbl-virt")));
+      } else {
+        var msg = "像は画面の外（約 " + fmt(Math.abs(o.b)) + " cm、物体の " +
+                  Math.abs(o.m).toFixed(2) + " 倍）";
+        var rightSide = o.b > 0;
+        root.appendChild(text(rightSide ? W - 14 : 14, 38, msg, "note"));
+      }
+    } else {
+      root.appendChild(text(W - 14, 38, "光が平行になり、像はできない", "note"));
+    }
+
+    /* ドラッグ用の当たり判定 */
+    root.appendChild(el("rect", {
+      x: r2(px(objX) - 26), y: r2(Math.min(objTipY, py(0)) - 26),
+      width: 52, height: r2(Math.abs(OH * k) + 52),
+      "class": "grip"
+    }));
+    root.appendChild(el("circle", { cx: r2(px(objX)), cy: r2(py(0)), r: 3.5, "class": "handle" }));
+  }
+
+  /* ---------- 数値・文章の更新 ---------- */
+  function updateText() {
+    var o = calc(a);
+
+    aOut.textContent = a;
+    aRange.value = a;
+
+    var btns = presets.querySelectorAll("button");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].setAttribute("aria-pressed",
+        parseInt(btns[i].getAttribute("data-a"), 10) === a ? "true" : "false");
+    }
+
+    if (o.kind === "none") {
+      rType.textContent = "像はできない";
+      rPos.textContent = "—";
+      rSize.textContent = "—";
+      hint.innerHTML = "物体がちょうど焦点の位置にあるので、屈折した光は平行になります。<b>像はできません。</b>";
+      return;
+    }
+
+    var mag = Math.abs(o.m);
+    rSize.textContent = mag > 1.02 ? "物体の " + mag.toFixed(2) + " 倍（大きい）"
+                      : mag < 0.98 ? "物体の " + mag.toFixed(2) + " 倍（小さい）"
+                      : "物体と同じ大きさ";
+
+    if (o.kind === "real") {
+      rType.textContent = "実像（倒立）";
+      rPos.textContent = "レンズの後ろ " + fmt(o.b) + " cm";
+      if (Math.abs(a - 2 * F) <= 1) {
+        hint.innerHTML = "物体が 2f の位置にあるので、像は 2f の位置に、<b>物体と同じ大きさ</b>で倒立してできます。";
+      } else if (a > 2 * F) {
+        hint.innerHTML = "物体が 2f より外側にあるので、像は<b>焦点と 2f の間</b>に、物体より小さく倒立してできます。";
+      } else {
+        hint.innerHTML = "物体が焦点と 2f の間にあるので、像は<b>2f より外側</b>に、物体より大きく倒立してできます。";
+      }
+    } else {
+      rType.textContent = "虚像（正立）";
+      rPos.textContent = "レンズの手前 " + fmt(Math.abs(o.b)) + " cm";
+      hint.innerHTML = "物体が焦点より内側にあるので、光は集まりません。レンズの手前に<b>物体より大きい正立した虚像</b>ができ、スクリーンには映りません。";
+    }
+  }
+
+  function render() {
+    draw();
+    updateText();
+  }
+
+  function setA(v) {
+    var next = clamp(Math.round(v), AMIN, AMAX);
+    if (next === a) return;
+    a = next;
+    render();
+  }
+
+  /* ---------- 操作 ---------- */
+  aRange.addEventListener("input", function () {
+    a = clamp(parseInt(aRange.value, 10), AMIN, AMAX);
+    aOut.textContent = a;
+    render();
+  });
+
+  presets.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest("button[data-a]") : null;
+    if (btn) setA(parseInt(btn.getAttribute("data-a"), 10));
+  });
+
+  var dragging = false;
+  svg.addEventListener("pointerdown", function (e) {
+    var r = svg.getBoundingClientRect();
+    var nearObject = Math.abs(e.clientX - r.left - px(-a)) <= 30;
+    var onGrip = e.target.getAttribute && e.target.getAttribute("class") === "grip";
+    if (!nearObject && !onGrip) return;
+    dragging = true;
+    svg.classList.add("grabbing");
+    if (svg.setPointerCapture) { try { svg.setPointerCapture(e.pointerId); } catch (err) {} }
+    e.preventDefault();
+  });
+  svg.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    setA(-cmX(e.clientX));
+    e.preventDefault();
+  });
+  function endDrag(e) {
+    if (!dragging) return;
+    dragging = false;
+    svg.classList.remove("grabbing");
+    if (svg.releasePointerCapture) { try { svg.releasePointerCapture(e.pointerId); } catch (err) {} }
+  }
+  svg.addEventListener("pointerup", endDrag);
+  svg.addEventListener("pointercancel", endDrag);
+
+  /* ---------- 画面サイズの変化に追従 ---------- */
+  if (window.ResizeObserver) {
+    var raf = 0;
+    new ResizeObserver(function () {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(function () { raf = 0; render(); });
+    }).observe(svg);
+  } else {
+    window.addEventListener("resize", render);
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
